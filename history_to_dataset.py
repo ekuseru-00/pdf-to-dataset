@@ -31,19 +31,32 @@ logger = logging.getLogger(__name__)
 # Load spaCy for named entity recognition and sentence segmentation
 nlp = spacy.load("en_core_web_sm")
 
-# Default historical keywords - users can modify this set in the config section
-DEFAULT_HISTORICAL_KEYWORDS = {
-    'war', 'battle', 'conflict', 'treaty', 'empire', 'kingdom', 'dynasty', 'ruler', 
-    'king', 'queen', 'emperor', 'chief', 'leader', 'revolution', 'independence',
-    'colonial', 'colony', 'settlement', 'migration', 'civilization', 'culture',
-    'tradition', 'ritual', 'ceremony', 'religion', 'missionary', 'trade',
-    'conquest', 'invasion', 'rebellion', 'uprising', 'movement', 'reform',
-    'ancient', 'medieval', 'renaissance', 'industrial', 'modern', 'contemporary',
-    'century', 'decade', 'era', 'period', 'age', 'epoch'
+# Default steel engineering keywords - users can modify this set in the config section
+DEFAULT_STEEL_ENGINEERING_KEYWORDS = {
+    # Materials
+    'steel', 'alloy', 'carbon steel', 'stainless steel', 'mild steel', 'high-strength steel', 
+    'tool steel', 'galvanized steel',
+    # Processes
+    'welding', 'forging', 'casting', 'machining', 'grinding', 'heat treatment', 
+    'quenching', 'tempering', 'annealing', 'rolling',
+    # Techniques
+    'arc welding', 'mig welding', 'tig welding', 'plasma cutting', 'flame cutting', 
+    'shearing', 'bending', 'stamping',
+    # Standards
+    'astm', 'api', 'aws', 'iso', 'en', 'yield strength', 'tensile strength', 
+    'hardness', 'ductility',
+    # Equipment
+    'furnace', 'lathe', 'press', 'hammer', 'anvil', 'forge', 'kiln', 'reactor',
+    # Properties
+    'brittleness', 'elasticity', 'plasticity', 'corrosion resistance', 'fatigue', 
+    'fatigue resistance',
+    # Applications
+    'structural', 'construction', 'pipeline', 'automotive', 'aerospace', 'marine', 
+    'pressure vessel'
 }
 
 def load_custom_keywords(keywords_file="keywords.txt"):
-    """Load custom historical keywords from a file if it exists."""
+    """Load custom steel engineering keywords from a file if it exists."""
     if os.path.exists(keywords_file):
         try:
             with open(keywords_file, 'r', encoding='utf-8') as f:
@@ -54,7 +67,7 @@ def load_custom_keywords(keywords_file="keywords.txt"):
         except Exception as e:
             print(f"Error loading keywords file: {e}. Using default keywords.")
             logger.warning(f"Error loading keywords file: {e}. Using default keywords.")
-    return DEFAULT_HISTORICAL_KEYWORDS
+    return DEFAULT_STEEL_ENGINEERING_KEYWORDS
 
 def check_ollama_health():
     """Check if Ollama server is running."""
@@ -109,14 +122,14 @@ def read_pdf_text(pdf_path):
         print(f"Read PDF: {len(text)} characters in {time.time() - start_time:.2f}s")
         logger.info(f"Read PDF: {len(text)} characters in {time.time() - start_time:.2f}s")
         
-        # Check for historical keywords
-        historical_keywords = load_custom_keywords()
-        found_keywords = [k for k in historical_keywords if k in text.lower()]
-        print(f"Historical keywords found: {found_keywords[:10]}...")  # Show first 10
-        logger.info(f"Historical keywords found: {found_keywords[:10]}...")
+        # Check for steel engineering keywords
+        steel_keywords = load_custom_keywords()
+        found_keywords = [k for k in steel_keywords if k in text.lower()]
+        print(f"Steel engineering keywords found: {found_keywords[:10]}...")  # Show first 10
+        logger.info(f"Steel engineering keywords found: {found_keywords[:10]}...")
         if not found_keywords:
-            print("Warning: PDF text may lack sufficient historical content for Q&A generation")
-            logger.warning("PDF text may lack sufficient historical content for Q&A generation")
+            print("Warning: PDF text may lack sufficient steel engineering content for Q&A generation")
+            logger.warning("PDF text may lack sufficient steel engineering content for Q&A generation")
         return text
     except Exception as e:
         print(f"Error reading PDF {pdf_path}: {str(e)}")
@@ -125,7 +138,7 @@ def read_pdf_text(pdf_path):
 
 def chunk_text(text, max_chars=800, overlap=200, min_chunks=3):
     """Split text into semantically meaningful chunks."""
-    historical_keywords = load_custom_keywords()
+    steel_keywords = load_custom_keywords()
     doc = nlp(text)
     chunks = []
     current_chunk = ""
@@ -138,11 +151,11 @@ def chunk_text(text, max_chars=800, overlap=200, min_chunks=3):
         if not para:
             continue
         para_doc = nlp(para)
-        has_historical_content = any(keyword in para.lower() for keyword in historical_keywords) or \
-                                any(ent.label_ in {'PERSON', 'GPE', 'ORG', 'DATE', 'EVENT'} for ent in para_doc.ents)
-        if not has_historical_content:
-            print(f"Discarded paragraph (no historical content): {para[:100]}...")
-            logger.debug(f"Discarded paragraph (no historical content): {para[:100]}...")
+        has_steel_content = any(keyword in para.lower() for keyword in steel_keywords) or \
+                                any(ent.label_ in {'ORG', 'PRODUCT', 'MATERIAL', 'QUANTITY', 'GPE'} for ent in para_doc.ents)
+        if not has_steel_content:
+            print(f"Discarded paragraph (no steel engineering content): {para[:100]}...")
+            logger.debug(f"Discarded paragraph (no steel engineering content): {para[:100]}...")
             continue
         para_length = len(para)
         
@@ -168,11 +181,11 @@ def chunk_text(text, max_chars=800, overlap=200, min_chunks=3):
             if not sent_text:
                 continue
             sent_length = len(sent_text)
-            has_historical_content = any(keyword in sent_text.lower() for keyword in historical_keywords) or \
-                                    any(ent.label_ in {'PERSON', 'GPE', 'ORG', 'DATE', 'EVENT'} for ent in sent.ents)
-            if not has_historical_content:
-                print(f"Discarded sentence (no historical content): {sent_text[:100]}...")
-                logger.debug(f"Discarded sentence (no historical content): {sent_text[:100]}...")
+            has_steel_content = any(keyword in sent_text.lower() for keyword in steel_keywords) or \
+                                    any(ent.label_ in {'ORG', 'PRODUCT', 'MATERIAL', 'QUANTITY', 'GPE'} for ent in sent.ents)
+            if not has_steel_content:
+                print(f"Discarded sentence (no steel engineering content): {sent_text[:100]}...")
+                logger.debug(f"Discarded sentence (no steel engineering content): {sent_text[:100]}...")
                 continue
             if current_length + sent_length <= max_chars:
                 current_chunk += sent_text + " "
@@ -193,13 +206,13 @@ def normalize_text(text):
     """Normalize text to handle case sensitivity and clean up."""
     return preprocessing.normalize.unicode(text.lower())
 
-def is_historical_qa(question, answer):
-    """Check if Q&A pair is historical using named entity recognition or keywords."""
+def is_steel_engineering_qa(question, answer):
+    """Check if Q&A pair is steel engineering related using named entity recognition or keywords."""
     doc_q = nlp(question)
     doc_a = nlp(answer)
-    historical_keywords = load_custom_keywords()
-    has_entities = any(ent.label_ in {'PERSON', 'GPE', 'ORG', 'DATE', 'EVENT'} for ent in doc_q.ents + doc_a.ents)
-    has_keywords = any(keyword in question.lower() or keyword in answer.lower() for keyword in historical_keywords)
+    steel_keywords = load_custom_keywords()
+    has_entities = any(ent.label_ in {'ORG', 'PRODUCT', 'MATERIAL', 'QUANTITY', 'GPE'} for ent in doc_q.ents + doc_a.ents)
+    has_keywords = any(keyword in question.lower() or keyword in answer.lower() for keyword in steel_keywords)
     return has_entities or has_keywords
 
 def deduplicate_qa_pairs(pairs):
@@ -242,16 +255,16 @@ def fix_json_string(json_str):
 
 def extract_relevant_input(chunk, question, full_text):
     """Extract relevant sentences from the chunk or full text for the input field."""
-    historical_keywords = load_custom_keywords()
+    steel_keywords = load_custom_keywords()
     doc = nlp(chunk)
     relevant_sentences = []
-    question_keywords = set(normalize_text(question).split()) & historical_keywords
+    question_keywords = set(normalize_text(question).split()) & steel_keywords
     
     # First, try to find relevant sentences in the chunk
     for sent in doc.sents:
         sent_text = sent.text.strip()
         if any(keyword in normalize_text(sent_text) for keyword in question_keywords) or \
-           any(ent.label_ in {'PERSON', 'GPE', 'ORG', 'DATE', 'EVENT'} for ent in sent.ents):
+           any(ent.label_ in {'ORG', 'PRODUCT', 'MATERIAL', 'QUANTITY', 'GPE'} for ent in sent.ents):
             relevant_sentences.append(sent_text)
     
     # If no relevant sentences found, search the full text
@@ -260,7 +273,7 @@ def extract_relevant_input(chunk, question, full_text):
         for sent in doc_full.sents:
             sent_text = sent.text.strip()
             if any(keyword in normalize_text(sent_text) for keyword in question_keywords) or \
-               any(ent.label_ in {'PERSON', 'GPE', 'ORG', 'DATE', 'EVENT'} for ent in sent.ents):
+               any(ent.label_ in {'ORG', 'PRODUCT', 'MATERIAL', 'QUANTITY', 'GPE'} for ent in sent.ents):
                 relevant_sentences.append(sent_text)
                 if len(' '.join(relevant_sentences)) >= 800:
                     break
@@ -278,7 +291,8 @@ def extract_json_array(text, chunk, full_text):
         r'who.*supervisor', r'what.*permits', r'what.*financial', r'what.*table of contents',
         r'who.*mentioned', r'what.*orthography', r'who.*provided', r'what.*list',
         r'what.*abbreviations', r'who.*assisted', r'who.*intellectually',
-        r'what.*mean', r'define\s+', r'what.*structure'
+        r'define.*general', r'what.*author', r'what.*chapter', r'what.*section',
+        r'what.*page', r'who.*editor', r'what.*reference'
     ]
     try:
         start = text.find('[')
@@ -296,14 +310,14 @@ def extract_json_array(text, chunk, full_text):
             question = normalize_text(item["instruction"])
             answer = normalize_text(item["output"])
             if (not any(re.search(pattern, question) for pattern in exclude_patterns) and 
-                len(answer) >= 100 and is_historical_qa(question, answer)):
+                len(answer) >= 100 and is_steel_engineering_qa(question, answer)):
                 item["input"] = extract_relevant_input(chunk, question, full_text)
                 item["instruction"] = question.capitalize()
                 item["output"] = answer
                 filtered_pairs.append(item)
             else:
-                print(f"Filtered out Q&A pair: Q: {question}, A: {answer[:50]}... (non-historical or too short)")
-                logger.debug(f"Filtered out Q&A pair: Q: {question}, A: {answer[:50]}... (non-historical or too short)")
+                print(f"Filtered out Q&A pair: Q: {question}, A: {answer[:50]}... (non-steel engineering or too short)")
+                logger.debug(f"Filtered out Q&A pair: Q: {question}, A: {answer[:50]}... (non-steel engineering or too short)")
         
         print(f"Parsed {len(filtered_pairs)} valid JSON Q&A pairs")
         logger.info(f"Parsed {len(filtered_pairs)} valid JSON Q&A pairs")
@@ -314,7 +328,7 @@ def extract_json_array(text, chunk, full_text):
         return parse_qa_pairs(text, chunk, full_text)
 
 def parse_qa_pairs(text, chunk, full_text):
-    """Parse Q: A: pairs from non-JSON response, focusing on historical content."""
+    """Parse Q: A: pairs from non-JSON response, focusing on steel engineering content."""
     qa_pairs = []
     qa_pattern = re.compile(r'Q:\s*(.*?)\nA:\s*(.*?)(?=\nQ:|$)', re.DOTALL)
     matches = qa_pattern.findall(text)
@@ -325,14 +339,15 @@ def parse_qa_pairs(text, chunk, full_text):
         r'who.*supervisor', r'what.*permits', r'what.*financial', r'what.*table of contents',
         r'who.*mentioned', r'what.*orthography', r'who.*provided', r'what.*list',
         r'what.*abbreviations', r'who.*assisted', r'who.*intellectually',
-        r'what.*mean', r'define\s+', r'what.*structure'
+        r'define.*general', r'what.*author', r'what.*chapter', r'what.*section',
+        r'what.*page', r'who.*editor', r'what.*reference'
     ]
     
     for question, answer in matches:
         question = normalize_text(question.strip())
         answer = normalize_text(answer.strip())
         if (not any(re.search(pattern, question) for pattern in exclude_patterns) and 
-            len(answer) >= 100 and is_historical_qa(question, answer)):
+            len(answer) >= 100 and is_steel_engineering_qa(question, answer)):
             qa_pairs.append({
                 "instruction": question.capitalize(),
                 "input": extract_relevant_input(chunk, question, full_text),
@@ -341,8 +356,8 @@ def parse_qa_pairs(text, chunk, full_text):
             print(f"Accepted Q&A pair: Q: {question.capitalize()}, A: {answer[:50]}...")
             logger.info(f"Accepted Q&A pair: Q: {question.capitalize()}, A: {answer[:50]}...")
         else:
-            print(f"Filtered out Q&A pair: Q: {question}, A: {answer[:50]}... (non-historical or too short)")
-            logger.debug(f"Filtered out Q&A pair: Q: {question}, A: {answer[:50]}... (non-historical or too short)")
+            print(f"Filtered out Q&A pair: Q: {question}, A: {answer[:50]}... (non-steel engineering or too short)")
+            logger.debug(f"Filtered out Q&A pair: Q: {question}, A: {answer[:50]}... (non-steel engineering or too short)")
     
     if not qa_pairs:
         print(f"No valid Q&A pairs found in output for chunk:\n{chunk[:500]}...")
@@ -354,21 +369,21 @@ def parse_qa_pairs(text, chunk, full_text):
     return deduplicate_qa_pairs(qa_pairs)
 
 def generate_questions_answers(chunk, full_text, model_name="llama3.1", max_retries=5):
-    """Generate 1–12 Q&A pairs about historical figures, events, and cultural items."""
+    """Generate 1–12 Q&A pairs about steel engineering materials, processes, and fabrication techniques."""
     print(f"Processing chunk (first 200 chars): {chunk[:200]}...")
     logger.info(f"Processing chunk (first 200 chars): {chunk[:200]}...")
     start_time = time.time()
     prompt = f"""
-You are a historian tasked with generating 1–12 high-quality question-answer pairs from a given text passage for a fine-tuned question-answering model. Your output MUST be a valid JSON array containing 1–12 objects, each with the fields "instruction" (the question), "input" (the specific sentences or phrases from the passage that directly relate to the question and answer), and "output" (the answer). Do NOT include any text outside the JSON array (e.g., explanations, headings, Q: A: pairs). Non-JSON output will be discarded.
+You are a steel engineering and fabrication expert tasked with generating 1–12 high-quality question-answer pairs from a given text passage for a fine-tuned question-answering model. Your output MUST be a valid JSON array containing 1–12 objects, each with the fields "instruction" (the question), "input" (the specific sentences or phrases from the passage that directly relate to the question and answer), and "output" (the answer). Do NOT include any text outside the JSON array (e.g., explanations, headings, Q: A: pairs). Non-JSON output will be discarded.
 
-Focus EXCLUSIVELY on questions about historical figures (e.g., rulers, leaders, warriors, scholars, missionaries), events (e.g., wars, battles, treaties, revolutions, movements), and cultural items or practices (e.g., traditions, rituals, ceremonies, literature, art, customs), including minor or less prominent ones. For the "input" field, include only the sentences or phrases from the passage that directly support the question and answer, ensuring the input is complete and meaningful. Answers must be at least 100 characters, include specific details (e.g., quotes, names, dates, roles, significance), and explicitly cite sources mentioned in the passage or note if no source is provided. Avoid non-historical topics (e.g., authorship, publication, supervisors, funding, table of contents, orthography, abbreviations, acknowledgments, definitions, structure). If the passage is short or lacks sufficient content, generate at least 1 high-quality pair, prioritizing historical relevance.
+Focus EXCLUSIVELY on questions about steel engineering and fabrication topics including: materials (e.g., steel types, alloys, carbon steel, stainless steel), processes (e.g., welding, forging, casting, machining, heat treatment), techniques (e.g., arc welding, MIG welding, TIG welding, plasma cutting), standards (e.g., ASTM, API, AWS, ISO, material properties), equipment (e.g., furnace, lathe, press, forge), material properties (e.g., hardness, tensile strength, ductility, corrosion resistance), and applications (e.g., structural, construction, pipeline, automotive, aerospace). For the "input" field, include only the sentences or phrases from the passage that directly support the question and answer, ensuring the input is complete and meaningful. Answers must be at least 100 characters, include specific details (e.g., specifications, standards, procedures, material compositions, property values), and explicitly cite sources mentioned in the passage or note if no source is provided. Avoid non-technical topics (e.g., authorship, publication, supervisors, funding, table of contents, abbreviations, acknowledgments, general definitions, document structure). If the passage is short or lacks sufficient content, generate at least 1 high-quality pair, prioritizing steel engineering relevance.
 
-Ensure answers are detailed, accurate, and contextually rich, drawing directly from the passage. Verify relationships and use primary sources or interviews cited in the passage for accuracy. If the passage lacks specific details, do NOT generate Q&A pairs based on external knowledge.
+Ensure answers are detailed, accurate, and contextually rich, drawing directly from the passage. Verify technical specifications and use industry standards or technical sources cited in the passage for accuracy. If the passage lacks specific details, do NOT generate Q&A pairs based on external knowledge.
 
 Example output:
 [
-  {{"instruction": "What was the significance of the Battle of Hastings?", "input": "The Battle of Hastings in 1066 marked the Norman conquest of England.", "output": "The Battle of Hastings in 1066 was a pivotal moment that marked the Norman conquest of England, fundamentally changing English society, language, and governance under William the Conqueror's rule."}},
-  {{"instruction": "How did medieval guilds influence trade?", "input": "Medieval guilds controlled trade practices and maintained quality standards in cities.", "output": "Medieval guilds were powerful organizations that controlled trade practices, maintained quality standards, and regulated prices in cities, effectively shaping the economic landscape of medieval Europe through their monopolistic control over crafts and commerce."}}
+  {{"instruction": "What are the key properties of ASTM A36 steel?", "input": "ASTM A36 is a structural steel with a minimum yield strength of 36,000 psi and tensile strength of 58,000-80,000 psi.", "output": "ASTM A36 is a widely used structural carbon steel that has a minimum yield strength of 36,000 psi (250 MPa) and a tensile strength ranging from 58,000 to 80,000 psi (400-550 MPa). This combination of properties makes it ideal for construction and structural applications where high strength and good weldability are required."}},
+  {{"instruction": "How does quenching affect steel hardness?", "input": "Quenching rapidly cools heated steel in water or oil, transforming its microstructure to increase hardness and strength.", "output": "Quenching is a heat treatment process that involves rapidly cooling heated steel by immersing it in water, oil, or other quenching media. This rapid cooling transforms the steel's microstructure from austenite to martensite, significantly increasing its hardness and strength. The rate of cooling and choice of quenching medium are critical factors that determine the final properties of the steel."}}
 ]
 
 Generate 1–12 high-quality question-answer pairs based on the following passage:
