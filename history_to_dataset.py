@@ -151,8 +151,12 @@ def chunk_text(text, max_chars=800, overlap=200, min_chunks=3):
         if not para:
             continue
         para_doc = nlp(para)
-        has_steel_content = any(keyword in para.lower() for keyword in steel_keywords) or \
-                                any(ent.label_ in {'ORG', 'PRODUCT', 'QUANTITY', 'CARDINAL', 'PERCENT', 'MONEY'} for ent in para_doc.ents)
+        # More lenient: Accept if has steel keywords OR technical entities OR just has reasonable content
+        has_steel_content = (
+            any(keyword in para.lower() for keyword in steel_keywords) or 
+            any(ent.label_ in {'ORG', 'PRODUCT', 'QUANTITY', 'CARDINAL', 'PERCENT', 'MONEY', 'GPE', 'DATE'} for ent in para_doc.ents) or
+            len(para) > 100  # Accept longer paragraphs that might have technical content
+        )
         if not has_steel_content:
             print(f"Discarded paragraph (no steel engineering content): {para[:100]}...")
             logger.debug(f"Discarded paragraph (no steel engineering content): {para[:100]}...")
@@ -181,8 +185,12 @@ def chunk_text(text, max_chars=800, overlap=200, min_chunks=3):
             if not sent_text:
                 continue
             sent_length = len(sent_text)
-            has_steel_content = any(keyword in sent_text.lower() for keyword in steel_keywords) or \
-                                    any(ent.label_ in {'ORG', 'PRODUCT', 'QUANTITY', 'CARDINAL', 'PERCENT', 'MONEY'} for ent in sent.ents)
+            # More lenient: Accept if has steel keywords OR technical entities OR reasonable length
+            has_steel_content = (
+                any(keyword in sent_text.lower() for keyword in steel_keywords) or 
+                any(ent.label_ in {'ORG', 'PRODUCT', 'QUANTITY', 'CARDINAL', 'PERCENT', 'MONEY', 'GPE', 'DATE'} for ent in sent.ents) or
+                len(sent_text) > 50  # Accept longer sentences
+            )
             if not has_steel_content:
                 print(f"Discarded sentence (no steel engineering content): {sent_text[:100]}...")
                 logger.debug(f"Discarded sentence (no steel engineering content): {sent_text[:100]}...")
@@ -211,9 +219,13 @@ def is_steel_engineering_qa(question, answer):
     doc_q = nlp(question)
     doc_a = nlp(answer)
     steel_keywords = load_custom_keywords()
-    has_entities = any(ent.label_ in {'ORG', 'PRODUCT', 'QUANTITY', 'CARDINAL', 'PERCENT', 'MONEY'} for ent in doc_q.ents + doc_a.ents)
+    
+    # More lenient: Accept if has technical entities OR keywords OR technical numbers/specs
+    has_entities = any(ent.label_ in {'ORG', 'PRODUCT', 'QUANTITY', 'CARDINAL', 'PERCENT', 'MONEY', 'GPE', 'DATE'} for ent in doc_q.ents + doc_a.ents)
     has_keywords = any(keyword in question.lower() or keyword in answer.lower() for keyword in steel_keywords)
-    return has_entities or has_keywords
+    has_technical_numbers = bool(re.search(r'\d+\s*(mm|cm|m|kg|ton|psi|mpa|gpa|°c|°f|%)', answer.lower()))
+    
+    return has_entities or has_keywords or has_technical_numbers
 
 def deduplicate_qa_pairs(pairs):
     """Remove duplicate Q&A pairs based on semantic similarity."""
@@ -225,19 +237,22 @@ def deduplicate_qa_pairs(pairs):
     tfidf_matrix = vectorizer.fit_transform(texts)
     similarity_matrix = cosine_similarity(tfidf_matrix)
     
-    keep_indices = []
-    for i in range(len(pairs)):
-        if i not in keep_indices:
-            for j in range(i + 1, len(pairs)):
-                if similarity_matrix[i][j] > 0.9:  # Threshold for near-duplicates
-                    continue
-                keep_indices.append(j)
-            keep_indices.append(i)
+    # Fix: Keep track of which indices to keep, avoiding duplicates
+    keep_indices = set()
+    skip_indices = set()
     
-    deduped_pairs = [pairs[i] for i in sorted(set(keep_indices))]
+    for i in range(len(pairs)):
+        if i in skip_indices:
+            continue
+        keep_indices.add(i)
+        for j in range(i + 1, len(pairs)):
+            if similarity_matrix[i][j] > 0.9:  # Threshold for near-duplicates
+                skip_indices.add(j)  # Mark as duplicate
+    
+    deduped_pairs = [pairs[i] for i in sorted(keep_indices)]
     print(f"Deduplicated {len(pairs)} to {len(deduped_pairs)} Q&A pairs")
     logger.info(f"Deduplicated {len(pairs)} to {len(deduped_pairs)} Q&A pairs")
-    return deduped_pairs[:12]  # Limit to 12 pairs
+    return deduped_pairs[:30]  # Increased limit from 12 to 30 pairs
 
 def fix_json_string(json_str):
     """Attempt to fix common JSON errors (trailing commas, invalid escapes)."""
@@ -285,14 +300,11 @@ def extract_relevant_input(chunk, question, full_text):
 
 def extract_json_array(text, chunk, full_text):
     """Extract JSON array from text, handling malformed cases."""
+    # Reduced and less restrictive exclude patterns
     exclude_patterns = [
-        r'who.*wrote', r'who.*authored', r'what.*title', r'what.*published', 
-        r'what.*topic.*passage', r'what.*debate', r'what.*focus.*research',
-        r'who.*supervisor', r'what.*permits', r'what.*financial', r'what.*table of contents',
-        r'who.*mentioned', r'what.*orthography', r'who.*provided', r'what.*list',
-        r'what.*abbreviations', r'who.*assisted', r'who.*intellectually',
-        r'define.*general', r'what.*author', r'what.*chapter', r'what.*section',
-        r'what.*page', r'who.*editor', r'what.*reference'
+        r'who.*wrote', r'who.*authored', r'what.*title.*published', 
+        r'who.*supervisor', r'what.*table of contents',
+        r'what.*abbreviations.*list', r'who.*editor'
     ]
     try:
         start = text.find('[')
@@ -309,8 +321,9 @@ def extract_json_array(text, chunk, full_text):
         for item in parsed:
             question = normalize_text(item["instruction"])
             answer = normalize_text(item["output"])
+            # Reduced minimum answer length from 100 to 60 characters
             if (not any(re.search(pattern, question) for pattern in exclude_patterns) and 
-                len(answer) >= 100 and is_steel_engineering_qa(question, answer)):
+                len(answer) >= 60 and is_steel_engineering_qa(question, answer)):
                 item["input"] = extract_relevant_input(chunk, question, full_text)
                 item["instruction"] = question.capitalize()
                 item["output"] = answer
@@ -333,21 +346,19 @@ def parse_qa_pairs(text, chunk, full_text):
     qa_pattern = re.compile(r'Q:\s*(.*?)\nA:\s*(.*?)(?=\nQ:|$)', re.DOTALL)
     matches = qa_pattern.findall(text)
     
+    # Reduced and less restrictive exclude patterns
     exclude_patterns = [
-        r'who.*wrote', r'who.*authored', r'what.*title', r'what.*published', 
-        r'what.*topic.*passage', r'what.*debate', r'what.*focus.*research',
-        r'who.*supervisor', r'what.*permits', r'what.*financial', r'what.*table of contents',
-        r'who.*mentioned', r'what.*orthography', r'who.*provided', r'what.*list',
-        r'what.*abbreviations', r'who.*assisted', r'who.*intellectually',
-        r'define.*general', r'what.*author', r'what.*chapter', r'what.*section',
-        r'what.*page', r'who.*editor', r'what.*reference'
+        r'who.*wrote', r'who.*authored', r'what.*title.*published', 
+        r'who.*supervisor', r'what.*table of contents',
+        r'what.*abbreviations.*list', r'who.*editor'
     ]
     
     for question, answer in matches:
         question = normalize_text(question.strip())
         answer = normalize_text(answer.strip())
+        # Reduced minimum answer length from 100 to 60 characters
         if (not any(re.search(pattern, question) for pattern in exclude_patterns) and 
-            len(answer) >= 100 and is_steel_engineering_qa(question, answer)):
+            len(answer) >= 60 and is_steel_engineering_qa(question, answer)):
             qa_pairs.append({
                 "instruction": question.capitalize(),
                 "input": extract_relevant_input(chunk, question, full_text),
@@ -369,14 +380,14 @@ def parse_qa_pairs(text, chunk, full_text):
     return deduplicate_qa_pairs(qa_pairs)
 
 def generate_questions_answers(chunk, full_text, model_name="llama3.1", max_retries=5):
-    """Generate 1–12 Q&A pairs about steel engineering materials, processes, and fabrication techniques."""
+    """Generate 1–30 Q&A pairs about steel engineering materials, processes, and fabrication techniques."""
     print(f"Processing chunk (first 200 chars): {chunk[:200]}...")
     logger.info(f"Processing chunk (first 200 chars): {chunk[:200]}...")
     start_time = time.time()
     prompt = f"""
-You are a steel engineering and fabrication expert tasked with generating 1–12 high-quality question-answer pairs from a given text passage for a fine-tuned question-answering model. Your output MUST be a valid JSON array containing 1–12 objects, each with the fields "instruction" (the question), "input" (the specific sentences or phrases from the passage that directly relate to the question and answer), and "output" (the answer). Do NOT include any text outside the JSON array (e.g., explanations, headings, Q: A: pairs). Non-JSON output will be discarded.
+You are a steel engineering and fabrication expert tasked with generating 1–30 high-quality question-answer pairs from a given text passage for a fine-tuned question-answering model. Your output MUST be a valid JSON array containing 1–30 objects, each with the fields "instruction" (the question), "input" (the specific sentences or phrases from the passage that directly relate to the question and answer), and "output" (the answer). Do NOT include any text outside the JSON array (e.g., explanations, headings, Q: A: pairs). Non-JSON output will be discarded.
 
-Focus EXCLUSIVELY on questions about steel engineering and fabrication topics including: materials (e.g., steel types, alloys, carbon steel, stainless steel), processes (e.g., welding, forging, casting, machining, heat treatment), techniques (e.g., arc welding, MIG welding, TIG welding, plasma cutting), standards (e.g., ASTM, API, AWS, ISO, material properties), equipment (e.g., furnace, lathe, press, forge), material properties (e.g., hardness, tensile strength, ductility, corrosion resistance), and applications (e.g., structural, construction, pipeline, automotive, aerospace). For the "input" field, include only the sentences or phrases from the passage that directly support the question and answer, ensuring the input is complete and meaningful. Answers must be at least 100 characters, include specific details (e.g., specifications, standards, procedures, material compositions, property values), and explicitly cite sources mentioned in the passage or note if no source is provided. Avoid non-technical topics (e.g., authorship, publication, supervisors, funding, table of contents, abbreviations, acknowledgments, general definitions, document structure). If the passage is short or lacks sufficient content, generate at least 1 high-quality pair, prioritizing steel engineering relevance.
+Focus on questions about steel engineering and fabrication topics including: materials (e.g., steel types, alloys, carbon steel, stainless steel), processes (e.g., welding, forging, casting, machining, heat treatment), techniques (e.g., arc welding, MIG welding, TIG welding, plasma cutting), standards (e.g., ASTM, API, AWS, ISO, material properties), equipment (e.g., furnace, lathe, press, forge), material properties (e.g., hardness, tensile strength, ductility, corrosion resistance), applications (e.g., structural, construction, pipeline, automotive, aerospace), and technical specifications. For the "input" field, include only the sentences or phrases from the passage that directly support the question and answer, ensuring the input is complete and meaningful. Answers must be at least 60 characters, include specific details (e.g., specifications, standards, procedures, material compositions, property values), and explicitly cite sources mentioned in the passage or note if no source is provided. Generate as many relevant Q&A pairs as possible from the content, aiming for 20-30 pairs for content-rich passages. If the passage is short or lacks sufficient content, generate at least 1 high-quality pair.
 
 Ensure answers are detailed, accurate, and contextually rich, drawing directly from the passage. Verify technical specifications and use industry standards or technical sources cited in the passage for accuracy. If the passage lacks specific details, do NOT generate Q&A pairs based on external knowledge.
 
@@ -386,7 +397,7 @@ Example output:
   {{"instruction": "How does quenching affect steel hardness?", "input": "Quenching rapidly cools heated steel in water or oil, transforming its microstructure to increase hardness and strength.", "output": "Quenching is a heat treatment process that involves rapidly cooling heated steel by immersing it in water, oil, or other quenching media. This rapid cooling transforms the steel's microstructure from austenite to martensite, significantly increasing its hardness and strength. The rate of cooling and choice of quenching medium are critical factors that determine the final properties of the steel."}}
 ]
 
-Generate 1–12 high-quality question-answer pairs based on the following passage:
+Generate 1–30 high-quality question-answer pairs based on the following passage:
 \"\"\"{chunk}\"\"\"
 """
 
