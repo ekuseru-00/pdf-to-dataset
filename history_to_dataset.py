@@ -25,7 +25,7 @@ try:
     PDF2IMAGE_AVAILABLE = True
 except ImportError:
     PDF2IMAGE_AVAILABLE = False
-    print("Warning: pdf2image not available. Image extraction will be disabled.")
+    logger.warning("pdf2image not available. Image extraction will be disabled.")
 
 # Try to import PIL for image processing
 try:
@@ -33,7 +33,7 @@ try:
     PIL_AVAILABLE = True
 except ImportError:
     PIL_AVAILABLE = False
-    print("Warning: PIL not available. Image processing will be limited.")
+    logger.warning("PIL not available. Image processing will be limited.")
 
 # Configure logging
 logging.basicConfig(
@@ -48,6 +48,9 @@ logger = logging.getLogger(__name__)
 
 # Load spaCy for named entity recognition and sentence segmentation
 nlp = spacy.load("en_core_web_sm")
+
+# Compiled regex pattern for technical numbers/specs (performance optimization)
+TECHNICAL_NUMBERS_PATTERN = re.compile(r'\d+\s*(mm|cm|m|kg|ton|psi|mpa|gpa|°c|°f|%)', re.IGNORECASE)
 
 # Default steel engineering keywords - users can modify this set in the config section
 DEFAULT_STEEL_ENGINEERING_KEYWORDS = {
@@ -184,7 +187,7 @@ def extract_pdf_images(pdf_path, dpi=150, max_pages=None):
         logger.info(f"Extracting images from {total_pages} pages at {dpi} DPI...")
         
         # Convert PDF pages to images
-        images = convert_from_path(pdf_path, dpi=dpi, first_page=1, last_page=max_pages)
+        images = convert_from_path(pdf_path, dpi=dpi, last_page=total_pages)
         
         page_images = [(i + 1, img) for i, img in enumerate(images)]
         
@@ -434,7 +437,7 @@ def is_steel_engineering_qa(question, answer):
     # More lenient: Accept if has technical entities OR keywords OR technical numbers/specs
     has_entities = any(ent.label_ in {'ORG', 'PRODUCT', 'QUANTITY', 'CARDINAL', 'PERCENT', 'MONEY', 'GPE', 'DATE'} for ent in doc_q.ents + doc_a.ents)
     has_keywords = any(keyword in question.lower() or keyword in answer.lower() for keyword in steel_keywords)
-    has_technical_numbers = bool(re.search(r'\d+\s*(mm|cm|m|kg|ton|psi|mpa|gpa|°c|°f|%)', answer.lower()))
+    has_technical_numbers = bool(TECHNICAL_NUMBERS_PATTERN.search(answer.lower()))
     
     return has_entities or has_keywords or has_technical_numbers
 
@@ -898,7 +901,7 @@ if __name__ == "__main__":
     parser.add_argument("--start-chunk", type=int, default=0, help="Starting chunk index (0-based, default 0)")
     parser.add_argument("--model-name", type=str, default="llama3.1", help="Ollama model name for text-based Q&A (e.g., llama3.1, mistral)")
     parser.add_argument("--max-workers", type=int, default=4, help="Number of parallel workers (default 4)")
-    parser.add_argument("--enable-vision", action="store_true", default=False, help="Enable image extraction and vision-based Q&A generation")
+    parser.add_argument("--enable-vision", action="store_true", default=True, help="Enable image extraction and vision-based Q&A generation (default: enabled)")
     parser.add_argument("--vision-model", type=str, default="qwen2.5:14b", help="Ollama vision model name (default qwen2.5:14b)")
     parser.add_argument("--max-image-pages", type=int, default=None, help="Maximum number of pages to extract images from (default: all pages)")
     args = parser.parse_args()
