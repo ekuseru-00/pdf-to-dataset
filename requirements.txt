@@ -1,0 +1,9 @@
+jsonlines
+requests
+PyPDF2
+psutil
+textacy
+scikit-learn
+spacy
+pdf2image
+Pillow
