@@ -152,7 +152,7 @@ def chunk_text(text, max_chars=800, overlap=200, min_chunks=3):
             continue
         para_doc = nlp(para)
         has_steel_content = any(keyword in para.lower() for keyword in steel_keywords) or \
-                                any(ent.label_ in {'ORG', 'PRODUCT', 'MATERIAL', 'QUANTITY', 'GPE'} for ent in para_doc.ents)
+                                any(ent.label_ in {'ORG', 'PRODUCT', 'QUANTITY', 'GPE', 'NORP'} for ent in para_doc.ents)
         if not has_steel_content:
             print(f"Discarded paragraph (no steel engineering content): {para[:100]}...")
             logger.debug(f"Discarded paragraph (no steel engineering content): {para[:100]}...")
@@ -182,7 +182,7 @@ def chunk_text(text, max_chars=800, overlap=200, min_chunks=3):
                 continue
             sent_length = len(sent_text)
             has_steel_content = any(keyword in sent_text.lower() for keyword in steel_keywords) or \
-                                    any(ent.label_ in {'ORG', 'PRODUCT', 'MATERIAL', 'QUANTITY', 'GPE'} for ent in sent.ents)
+                                    any(ent.label_ in {'ORG', 'PRODUCT', 'QUANTITY', 'GPE', 'NORP'} for ent in sent.ents)
             if not has_steel_content:
                 print(f"Discarded sentence (no steel engineering content): {sent_text[:100]}...")
                 logger.debug(f"Discarded sentence (no steel engineering content): {sent_text[:100]}...")
@@ -211,7 +211,7 @@ def is_steel_engineering_qa(question, answer):
     doc_q = nlp(question)
     doc_a = nlp(answer)
     steel_keywords = load_custom_keywords()
-    has_entities = any(ent.label_ in {'ORG', 'PRODUCT', 'MATERIAL', 'QUANTITY', 'GPE'} for ent in doc_q.ents + doc_a.ents)
+    has_entities = any(ent.label_ in {'ORG', 'PRODUCT', 'QUANTITY', 'GPE', 'NORP'} for ent in doc_q.ents + doc_a.ents)
     has_keywords = any(keyword in question.lower() or keyword in answer.lower() for keyword in steel_keywords)
     return has_entities or has_keywords
 
@@ -264,7 +264,7 @@ def extract_relevant_input(chunk, question, full_text):
     for sent in doc.sents:
         sent_text = sent.text.strip()
         if any(keyword in normalize_text(sent_text) for keyword in question_keywords) or \
-           any(ent.label_ in {'ORG', 'PRODUCT', 'MATERIAL', 'QUANTITY', 'GPE'} for ent in sent.ents):
+           any(ent.label_ in {'ORG', 'PRODUCT', 'QUANTITY', 'GPE', 'NORP'} for ent in sent.ents):
             relevant_sentences.append(sent_text)
     
     # If no relevant sentences found, search the full text
@@ -273,7 +273,7 @@ def extract_relevant_input(chunk, question, full_text):
         for sent in doc_full.sents:
             sent_text = sent.text.strip()
             if any(keyword in normalize_text(sent_text) for keyword in question_keywords) or \
-               any(ent.label_ in {'ORG', 'PRODUCT', 'MATERIAL', 'QUANTITY', 'GPE'} for ent in sent.ents):
+               any(ent.label_ in {'ORG', 'PRODUCT', 'QUANTITY', 'GPE', 'NORP'} for ent in sent.ents):
                 relevant_sentences.append(sent_text)
                 if len(' '.join(relevant_sentences)) >= 800:
                     break
