@@ -1,0 +1,16 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Generated files
+*.log
+*.jsonl
+checkpoint.json
+raw_responses.log
+temp_*.jsonl
+
+# Virtual environments
+venv/
+env/
+ENV/
