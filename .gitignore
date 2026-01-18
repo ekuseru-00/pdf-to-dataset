@@ -10,7 +10,17 @@ checkpoint.json
 raw_responses.log
 temp_*.jsonl
 
+# Test/sample files
+*.pdf
+
 # Virtual environments
 venv/
 env/
 ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
